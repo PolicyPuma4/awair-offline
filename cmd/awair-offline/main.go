@@ -3,6 +3,7 @@ package main
 import (
 	"awair-offline/internal/reader"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"os"
 	"strconv"
@@ -54,5 +55,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Fatal(reader.Listen(db, time.Duration(duration)))
+	r := reader.NewReader(time.Duration(duration)*time.Second, db)
+
+	monitors := []reader.Monitor{}
+	if err := json.Unmarshal([]byte(os.Getenv("MONITORS")), &monitors); err != nil {
+		log.Fatal(err)
+	}
+
+	for _, monitor := range monitors {
+		r.AddMonitor(monitor)
+	}
+
+	r.Listen()
 }
