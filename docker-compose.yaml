@@ -1,0 +1,16 @@
+services:
+  awair-offline:
+    build: .
+    container_name: awair-offline
+    networks:
+      - awair-offline
+    restart: unless-stopped
+    environment:
+      - DURATION=${DURATION}
+      - MONITORS=${MONITORS}
+    volumes:
+      - ./data:/data
+
+networks:
+  awair-offline:
+    name: awair-offline
