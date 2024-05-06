@@ -26,6 +26,8 @@ func main() {
 		}
 	}()
 
+	// modernc.org/sqlite does not support concurrent writes
+	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(
 		`CREATE TABLE IF NOT EXISTS data(
 			name TEXT NOT NULL,
@@ -50,21 +52,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	duration, err := strconv.Atoi(os.Getenv("DURATION"))
+	interval, err := strconv.Atoi(os.Getenv("DURATION"))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	r := reader.NewReader(time.Duration(duration)*time.Second, db)
 
 	monitors := []reader.Monitor{}
 	if err := json.Unmarshal([]byte(os.Getenv("MONITORS")), &monitors); err != nil {
 		log.Fatal(err)
 	}
 
-	for _, monitor := range monitors {
-		r.AddMonitor(monitor)
-	}
-
-	r.Listen()
+	(&reader.Reader{
+		Interval: time.Duration(interval) * time.Second,
+		Monitors: monitors,
+		DB:       db,
+	}).Read()
 }

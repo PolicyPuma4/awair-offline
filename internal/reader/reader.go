@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -16,35 +15,21 @@ type Monitor struct {
 	Address string `json:"address"`
 }
 
-type reader struct {
-	duration time.Duration
-	mu       sync.RWMutex
-	monitors []Monitor
-	client   *http.Client
-	db       *sql.DB
+type Reader struct {
+	Interval time.Duration
+	Monitors []Monitor
+	DB       *sql.DB
 }
 
-func NewReader(duration time.Duration, db *sql.DB) *reader {
-	return &reader{
-		duration: duration,
-		client:   &http.Client{},
-		db:       db,
-	}
-}
+var client = &http.Client{}
 
-func (r *reader) AddMonitor(monitor Monitor) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.monitors = append(r.monitors, monitor)
-}
-
-func (r *reader) read(monitor Monitor) error {
+func (r *Reader) read(monitor Monitor) error {
 	req, err := http.NewRequest("GET", monitor.Address+"/air-data/latest", nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := r.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -86,61 +71,51 @@ func (r *reader) read(monitor Monitor) error {
 		return err
 	}
 
-	err = func() error {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		_, err := r.db.Exec(
-			`INSERT OR IGNORE INTO data(
-				name,
-				timestamp,
-				score,
-				dew_point,
-				temp,
-				humid,
-				abs_humid,
-				co2,
-				co2_est,
-				co2_est_baseline,
-				voc,
-				voc_baseline,
-				voc_h2_raw,
-				voc_ethanol_raw,
-				pm25,
-				pm10_est
-			) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-			monitor.Name,
-			data.Timestamp,
-			data.Score,
-			data.DewPoint,
-			data.Temp,
-			data.Humid,
-			data.AbsHumid,
-			data.Co2,
-			data.Co2Est,
-			data.Co2EstBaseline,
-			data.Voc,
-			data.VocBaseline,
-			data.VocH2Raw,
-			data.VocEthanolRaw,
-			data.Pm25,
-			data.Pm10Est,
-		)
-
-		return err
-	}()
+	_, err = r.DB.Exec(
+		`INSERT OR IGNORE INTO data(
+			name,
+			timestamp,
+			score,
+			dew_point,
+			temp,
+			humid,
+			abs_humid,
+			co2,
+			co2_est,
+			co2_est_baseline,
+			voc,
+			voc_baseline,
+			voc_h2_raw,
+			voc_ethanol_raw,
+			pm25,
+			pm10_est
+		) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		monitor.Name,
+		data.Timestamp,
+		data.Score,
+		data.DewPoint,
+		data.Temp,
+		data.Humid,
+		data.AbsHumid,
+		data.Co2,
+		data.Co2Est,
+		data.Co2EstBaseline,
+		data.Voc,
+		data.VocBaseline,
+		data.VocH2Raw,
+		data.VocEthanolRaw,
+		data.Pm25,
+		data.Pm10Est,
+	)
 
 	return err
 }
 
-func (r *reader) Listen() {
-	ticker := time.NewTicker(r.duration)
+func (r *Reader) Read() {
+	ticker := time.NewTicker(r.Interval)
 	defer ticker.Stop()
 	for ; true; <-ticker.C {
-		for _, monitor := range func() []Monitor {
-			r.mu.RLock()
-			defer r.mu.RUnlock()
-			return r.monitors
-		}() {
+		for _, monitor := range r.Monitors {
 			go func() {
 				if err := r.read(monitor); err != nil {
 					log.Println(err)
